@@ -42,6 +42,8 @@ enum initRFlags{
 
 #define ST7735_TFTWIDTH  128
 #define ST7735_TFTHEIGHT 128
+#define BULLETWIDTH			 1
+#define BULLETHEIGHT		 5
 
 
 // Color definitions
@@ -1451,17 +1453,7 @@ void BSP_LCD_Message (int device, int line, int col, char *string, unsigned int 
 //					color		specifies the color of the crosshair
 // outputs: none
 void BSP_LCD_DrawCrosshair(int16_t x, int16_t y, int16_t color) {
-	//BSP_LCD_DrawFastVLine(x, y - 4, 9, color);
-	//BSP_LCD_DrawFastHLine(x-4, y, 9, color);
-	BSP_LCD_DrawFastHLine(x, y-4, 1, color);
-	BSP_LCD_DrawFastHLine(x-1, y-3, 3, color);
-	BSP_LCD_DrawFastHLine(x-1, y-1, 3, color);
-	BSP_LCD_DrawFastHLine(x-2, y-1, 5, color);
-	BSP_LCD_DrawFastHLine(x-3, y, 7, color);
-	BSP_LCD_DrawFastHLine(x-4, y+1, 9, color);
-	BSP_LCD_DrawFastHLine(x, y+2, 1, color);
-	BSP_LCD_DrawFastHLine(x-1, y+3, 3, color);
-	BSP_LCD_DrawFastHLine(x-2, y+4, 5, color);	
-	
+	BSP_LCD_DrawFastVLine(x, y - 4, 9, color);
+	BSP_LCD_DrawFastHLine(x-4, y, 9, color);
 }
 
