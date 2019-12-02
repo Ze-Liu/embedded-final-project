@@ -24,53 +24,6 @@
 #define PSEUDOPERIOD         	8000000
 #define LIFETIME             	1000
 #define RUNLENGTH            	600 // 30 seconds run length
-#define BULLETMAX							100
-#define ENEMYMAX							10
-#define BULLETWIDTH						1
-#define BULLETHEIGHT					5
-#define LCDWIDTH							128
-#define LCDHEIGHT							128
-#define BULLETSPEED						6
-#define TRAININGWIDTH					17
-#define TRAININGHEIGHT				7
-
-#define tx
-//#define rx
-
-enum faction {
-	null,
-	self,
-	enemy,
-	used
-};
-typedef enum faction FacType;
-
-enum enemytype {
-	enull,
-	training,
-	doomed
-};
-typedef enum enemytype EnemyType;
-
-struct enemies {
-	int16_t x;
-	int16_t y;
-	EnemyType type;
-};
-typedef struct enemies Enemy;
-int8_t enemyTest;
-Enemy enemies[ENEMYMAX];
-int16_t enemyNum;
-
-struct bullet{
-	int16_t x;
-	int16_t y;
-	FacType dir;										//bullet direction, self:forward; enemy:backward
-};
-typedef struct bullet bulletType;
-bulletType bullets[BULLETMAX];
-bulletType previousBullets[BULLETMAX];
-int16_t bulletNum;								//number of bullets
 
 extern Sema4Type LCDFree;
 uint16_t origin[2]; 	// The original ADC value of x,y if the joystick is not touched, used as reference
@@ -80,10 +33,6 @@ int16_t prevx, prevy;	// Previous x and y values of the crosshair
 uint8_t select;  			// joystick push
 uint8_t area[2];
 uint32_t PseudoCount;
-uint32_t test1;
-uint32_t score;
-uint32_t uart1testtx;
-uint32_t uart1testrx;
 
 unsigned long NumCreated;   		// Number of foreground threads created
 unsigned long NumSamples;   		// Incremented every ADC sample, in Producer
@@ -105,109 +54,8 @@ unsigned long JitterHistogram[JITTERSIZE]={0,};
 unsigned long TotalWithI1;
 unsigned short MaxWithI1;
 
-//Add bullet to bullets array
-//Return 1 if successfully added
-//Return 0 if array is full
-int16_t addBullet(int16_t bulx, int16_t buly, FacType dir) {
-	int16_t i;
-	bulletType temBullet;
-	temBullet.x = bulx;
-	temBullet.y = buly;
-	temBullet.dir = dir;
-	for(i = 0;i < BULLETMAX;i ++) {
-		if(bullets[i].dir == null) {
-			bullets[i] = temBullet;
-			bulletNum++;
-			return 1;
-		}
-	}
-	return 0;
-}
-
-int16_t deleteBullet(int16_t num) {
-	bulletType temBullet = {0,0,null};
-	bullets[num] = temBullet;
-	bulletNum--;
-	return 1;
-}
-
-void drawBullet(uint16_t color) {
-	int16_t i;
-	int16_t curBullet = 0;
-	for(i = 0;curBullet < bulletNum;i ++) {
-		if(bullets[i].dir != null) {
-			curBullet ++;
-			BSP_LCD_DrawFastVLine(previousBullets[i].x, previousBullets[i].y, BULLETHEIGHT, LCD_BLACK);
-			if(bullets[i].dir != used) {
-				BSP_LCD_DrawFastVLine(bullets[i].x, bullets[i].y, BULLETHEIGHT, color);
-			}
-		}
-	}
-}
-
-int16_t addEnemy(int16_t enex, int16_t eney, EnemyType t) {
-	int16_t i;
-	Enemy tem;
-	tem.x = enex;
-	tem.y = eney;
-	tem.type = t;
-	for(i = 0;i < ENEMYMAX;i ++) {
-		if(enemies[i].type == enull) {
-			enemies[i] = tem;
-			enemyNum++;
-			return 1;
-		}
-	}
-	return 0;
-}
-
-int16_t deleteEnemy(int16_t num) {
-	Enemy tem = {0,0,enull};
-	enemies[num] = tem;
-	enemyNum--;
-	return 1;
-}
-
-void drawBlack(Enemy e) {
-	BSP_LCD_FillRect(e.x, e.y, TRAININGWIDTH, TRAININGHEIGHT, LCD_BLACK);
-}
-
-void drawEnemy(uint16_t color) {
-	int16_t i;
-	for(i = 0;i < ENEMYMAX;i ++) {
-		if(enemies[i].type != enull) {
-			BSP_LCD_FillRect(enemies[i].x, enemies[i].y, TRAININGWIDTH, TRAININGHEIGHT, LCD_BLACK);
-			if(enemies[i].type != doomed) {
-				BSP_LCD_FillRect(enemies[i].x, enemies[i].y, TRAININGWIDTH, TRAININGHEIGHT, color);
-			}
-		}
-	}
-}
-
-void generateEnemy(void){
-	unsigned long time;
-	int16_t xpos;
-	while(1){
-		if(enemyNum == 0) {
-			time = OS_Time();
-			xpos = time % (LCDWIDTH - TRAININGWIDTH);
-			addEnemy(xpos,7,training);
-		}
-	}
-  //OS_Kill();  // done
-}
-
-int8_t trainingJudge(Enemy e, bulletType b) {
-	if((b.x >= e.x && b.x <= e.x + TRAININGWIDTH) && 
-		(b.y <= (e.y + TRAININGHEIGHT + (BULLETHEIGHT/2)) && b.y >= (e.y - (BULLETHEIGHT/2)))) {
-			return 1;
-		}
-	return 0;
-}
-
 void Device_Init(void){
 	UART_Init();
-	UART1_Init();
 	BSP_LCD_OutputInit();
 	BSP_Joystick_Init();
 }
@@ -243,19 +91,17 @@ void Producer(void){
 	uint16_t rawX,rawY; // raw adc value
 	uint8_t select;
 	jsDataType data;
-	uint16_t curBullet = 0;
-	int16_t i = 0, j = 0;
 	unsigned static long LastTime;  // time at previous ADC sample
 	unsigned long thisTime;         // time at current ADC sample
 	long jitter;                    // time between measured and expected, in us
-	//if (NumSamples < RUNLENGTH){
+	if (NumSamples < RUNLENGTH){
 		BSP_Joystick_Input(&rawX,&rawY,&select);
 		thisTime = OS_Time();       // current time, 12.5 ns
 		UpdateWork += UpdatePosition(rawX,rawY,&data); // calculation work
 		NumSamples++;               // number of samples
 		if(JsFifo_Put(data) == 0){ // send to consumer
 			DataLost++;
-		//}
+		}
 	//calculate jitter
 		if(UpdateWork > 1){    // ignore timing of first interrupt
 			unsigned long diff = OS_TimeDifference(LastTime,thisTime);
@@ -274,46 +120,7 @@ void Producer(void){
 			JitterHistogram[jitter]++; 
 		}
 		LastTime = thisTime;
-
 	}
-	//calculate bullets
-		for(i = 0,curBullet = 0;curBullet < bulletNum && i < BULLETMAX;i ++) {
-			if(bullets[i].dir == used) {
-					deleteBullet(i);
-			}
-			if(bullets[i].dir == self) {
-				curBullet ++;
-				previousBullets[i] = bullets[i];
-				bullets[i].y -= BULLETSPEED;
-				if(bullets[i].y <= ((BULLETHEIGHT + 1)/2)) {
-					//previousBullets[i] = bullets[i];
-					bullets[i].dir = used;
-				}
-				for(j = 0;j < ENEMYMAX;j ++) {
-					if(enemies[j].type != enull) {
-						if(enemies[j].type == doomed) {
-							deleteEnemy(j);
-						}
-						if(trainingJudge(enemies[j], bullets[i])) {
-							enemies[j].type = doomed;
-							score ++;
-							bullets[i].dir = used;
-						}
-					}
-				}
-			}
-			if(bullets[i].dir == enemy) {
-				curBullet ++;
-				previousBullets[i] = bullets[i];
-				bullets[i].y += BULLETSPEED;
-				if(bullets[i].y <= ((BULLETHEIGHT + 1)/2)) {
-					//previousBullets[i] = bullets[i];
-					bullets[i].dir = used;
-				}
-			}
-		}
-	//calculate enemies
-		
 }
 
 //--------------end of Task 1-----------------------------
@@ -324,8 +131,23 @@ void Producer(void){
 // foreground treads run for 2 sec and die
 // ***********ButtonWork*************
 void ButtonWork(void){
-	addBullet(x,y,self);
-	uart1testtx ++;
+	uint32_t StartTime,CurrentTime,ElapsedTime;
+	StartTime = OS_MsTime();
+	ElapsedTime = 0;
+	OS_bWait(&LCDFree);
+	BSP_LCD_FillScreen(BGCOLOR);
+	while (ElapsedTime < LIFETIME){
+		CurrentTime = OS_MsTime();
+		ElapsedTime = CurrentTime - StartTime;
+		BSP_LCD_Message(0,5,0,"Life Time:",LIFETIME);
+		BSP_LCD_Message(1,0,0,"Horizontal Area:",area[0]);
+		BSP_LCD_Message(1,1,0,"Vertical Area:",area[1]);
+		BSP_LCD_Message(1,2,0,"Elapsed Time:",ElapsedTime);
+		OS_Sleep(50);
+
+	}
+	BSP_LCD_FillScreen(BGCOLOR);
+	OS_bSignal(&LCDFree);
   OS_Kill();  // done, OS does not return from a Kill
 } 
 
@@ -335,9 +157,9 @@ void ButtonWork(void){
 // background threads execute once and return
 void SW1Push(void){
   if(OS_MsTime() > 20 ){ // debounce
-		if(OS_AddThread(&ButtonWork,128,4)){
+    if(OS_AddThread(&ButtonWork,128,4)){
 			OS_ClearMsTime();
-      //NumCreated++; 
+      NumCreated++; 
     }
     OS_ClearMsTime();  // at least 20ms between touches
   }
@@ -353,7 +175,7 @@ void SW1Push(void){
 // inputs:  none
 // outputs: none
 void Consumer(void){
-	while(1/*NumSamples < RUNLENGTH*/){
+	while(NumSamples < RUNLENGTH){
 		jsDataType data;
 		JsFifo_Get(&data);
 		OS_bWait(&LCDFree);
@@ -361,16 +183,13 @@ void Consumer(void){
 		BSP_LCD_DrawCrosshair(prevx, prevy, LCD_BLACK); // Draw a black crosshair
 		BSP_LCD_DrawCrosshair(data.x, data.y, LCD_RED); // Draw a red crosshair
 
-		BSP_LCD_Message(1, 5, 3, "Score: ", uart1testrx);		
-		//BSP_LCD_Message(1, 5, 12, "Y: ", y);
-		drawBullet(LCD_WHITE);
-		drawEnemy(LCD_WHITE);
+		BSP_LCD_Message(1, 5, 3, "X: ", x);		
+		BSP_LCD_Message(1, 5, 12, "Y: ", y);
 		OS_bSignal(&LCDFree);
 		prevx = data.x; 
 		prevy = data.y;
-		test1 ++;
 	}
-  //OS_Kill();  // done
+  OS_Kill();  // done
 }
 
 
@@ -388,12 +207,12 @@ void Consumer(void){
 void CubeNumCalc(void){ 
 	uint16_t CurrentX,CurrentY;
   while(1) {
-		//if(NumSamples < RUNLENGTH){
+		if(NumSamples < RUNLENGTH){
 			CurrentX = x; CurrentY = y;
 			area[0] = CurrentX / 22;
 			area[1] = CurrentY / 20;
 			Calculation++;
-		//}
+		}
   }
 }
 //--------------end of Task 4-----------------------------
@@ -406,30 +225,11 @@ void CubeNumCalc(void){
 // outputs: none
 
 void Interpreter(void){
-	
 	char command[80];
   while(1){
-		#ifdef tx
-			if(uart1testtx) {
-				OutCRLF();
-				UART_OutString("77777");
-				uart1testtx --;
-				OutCRLF();
-			}
-		#endif
-		#ifdef rx
-			UART_InString(command,79);
-			if(!strcmp(command, "77777")) {
-				uart1testrx ++;
-			}
-		#endif
-    /*OutCRLF(); UART_OutString(">>");
-		//
+    OutCRLF(); UART_OutString(">>");
 		UART_InString(command,79);
 		OutCRLF();
-		if(!strcmp(command, "1")) {
-			uart1testrx ++;
-		}
 		if (!(strcmp(command,"NumSamples"))){
 			UART_OutString("NumSamples: ");
 			UART_OutUDec(NumSamples);
@@ -468,8 +268,7 @@ void Interpreter(void){
 		}
 		else{
 			UART_OutString("Command incorrect!");
-		}*/
-		
+		}
   }
 }
 //--------------end of Task 5-----------------------------
@@ -484,6 +283,20 @@ void PeriodicUpdater(void){
 	PseudoCount++;
 }
 
+//************ Display *************** 
+// foreground thread, do some pseudo works to test if you can add multiple periodic threads
+// inputs:  none
+// outputs: none
+void Display(void){
+	while(NumSamples < RUNLENGTH){
+		OS_bWait(&LCDFree);
+		BSP_LCD_Message(1,4,0,"PseudoCount: ",PseudoCount);
+		OS_bSignal(&LCDFree);
+
+	}
+  OS_Kill();  // done
+}
+
 //--------------end of Task 6-----------------------------
 
 //------------------Task 7--------------------------------
@@ -492,7 +305,7 @@ void PeriodicUpdater(void){
 // ***********ButtonWork2*************
 void Restart(void){
 	uint32_t StartTime,CurrentTime,ElapsedTime;
-	//NumSamples = RUNLENGTH; // first kill the foreground threads
+	NumSamples = RUNLENGTH; // first kill the foreground threads
 	OS_Sleep(50); // wait
 	StartTime = OS_MsTime();
 	ElapsedTime = 0;
@@ -507,13 +320,13 @@ void Restart(void){
 	OS_bSignal(&LCDFree);
 	// restart
 	DataLost = 0;        // lost data between producer and consumer
-  //NumSamples = 0;
+  NumSamples = 0;
   UpdateWork = 0;
 	MaxJitter = 0;       // in 1us units
 	PseudoCount = 0;
 	x = 63; y = 63;
 	NumCreated += OS_AddThread(&Consumer,128,1); 
-	//NumCreated += OS_AddThread(&Display,128,3);
+	NumCreated += OS_AddThread(&Display,128,3);
   OS_Kill();  // done, OS does not return from a Kill
 } 
 
@@ -549,8 +362,6 @@ int main(void){
   NumSamples = 0;
   MaxJitter = 0;       // in 1us units
 	PseudoCount = 0;
-	score = 0;
-	uart1testtx = 1;
 
 //********initialize communication channels
   JsFifo_Init();
@@ -559,14 +370,14 @@ int main(void){
   OS_AddSW1Task(&SW1Push, 4);
 	OS_AddSW2Task(&SW2Push, 4);
   OS_AddPeriodicThread(&Producer, PERIOD, 3); // 2 kHz real time sampling of PD3
-	//OS_AddPeriodicThread(&PeriodicUpdater, PSEUDOPERIOD, 3);
+	OS_AddPeriodicThread(&PeriodicUpdater, PSEUDOPERIOD, 3);
 	
   NumCreated = 0 ;
 // create initial foreground threads
   NumCreated += OS_AddThread(&Interpreter, 128, 2); 
   NumCreated += OS_AddThread(&Consumer, 128, 1); 
-	//NumCreated += OS_AddThread(&CubeNumCalc, 128, 3); 
-	NumCreated += OS_AddThread(&generateEnemy, 128, 3);
+	NumCreated += OS_AddThread(&CubeNumCalc, 128, 3); 
+	NumCreated += OS_AddThread(&Display, 128, 3);
  
   OS_Launch(TIME_2MS); // doesn't return, interrupts enabled in here
 	return 0;            // this never executes

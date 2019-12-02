@@ -34,6 +34,8 @@
 #include "UART.h"
 
 #define NVIC_EN0_INT5           0x00000020  // Interrupt 5 enable
+#define NVIC_EN0_INT6           0x00000040  // Interrupt 5 enable
+
 
 #define UART_FR_RXFF            0x00000040  // UART Receive FIFO Full
 #define UART_FR_TXFF            0x00000020  // UART Transmit FIFO Full
@@ -96,14 +98,40 @@ void UART_Init(void){
   GPIO_PORTA_AMSEL_R = 0;               // disable analog functionality on PA
                                         // UART0=priority 2
   NVIC_PRI1_R = (NVIC_PRI1_R&0xFFFF00FF)|0x00008000; // bits 13-15
-  NVIC_EN0_R = NVIC_EN0_INT5;           // enable interrupt 5 in NVIC
+  NVIC_EN0_R = NVIC_EN0_INT5;           // enable interrupt 5 in NVIC	
 }
+
+void UART1_Init(void){
+	SYSCTL_RCGCUART_R |= 0x02;            // activate UART1
+  SYSCTL_RCGCGPIO_R |= 0x02;            // activate port B
+	
+	UART1_CTL_R &= ~UART_CTL_UARTEN;      // disable UART
+	UART1_IBRD_R = 43;                    // IBRD = int(80,000,000 / (16 * 115,200)) = int(43.4028)
+	UART1_FBRD_R = 26;
+	
+	UART1_LCRH_R = (UART_LCRH_WLEN_8|UART_LCRH_FEN);
+  UART1_IFLS_R &= ~0x3F;
+	UART1_IFLS_R += (UART_IFLS_TX1_8|UART_IFLS_RX1_8);
+	
+	UART1_IM_R |= (UART_IM_RXIM|UART_IM_TXIM|UART_IM_RTIM);
+	
+	UART1_CTL_R |= UART_CTL_UARTEN;       // enable UART
+	GPIO_PORTB_AFSEL_R |= 0x03;
+	GPIO_PORTB_DEN_R |= 0x03;
+	
+	GPIO_PORTB_PCTL_R = (GPIO_PORTB_PCTL_R&0xFFFFFF00)+0x00000011;
+	GPIO_PORTB_AMSEL_R = 0;
+	
+	NVIC_PRI1_R = (NVIC_PRI1_R&0xFFFF00FF)|0x00008000; // bits 13-15
+  NVIC_EN0_R = NVIC_EN0_INT6;           // enable interrupt 6 in NVIC	
+}
+
 // copy from hardware RX FIFO to software RX FIFO
 // stop when hardware RX FIFO is empty or software RX FIFO is full
 void static copyHardwareToSoftware(void){
   char letter;
-  while(((UART0_FR_R&UART_FR_RXFE) == 0) && (Rx_UARTFifo_Size() < (FIFOSIZE - 1))){
-    letter = UART0_DR_R;
+  while(((UART1_FR_R&UART_FR_RXFE) == 0) && (Rx_UARTFifo_Size() < (FIFOSIZE - 1))){
+    letter = UART1_DR_R;
     Rx_UARTFifo_Put(letter);
   }
 }
@@ -111,9 +139,9 @@ void static copyHardwareToSoftware(void){
 // stop when software TX FIFO is empty or hardware TX FIFO is full
 void static copySoftwareToHardware(void){
   char letter;
-  while(((UART0_FR_R&UART_FR_TXFF) == 0) && (Tx_UARTFifo_Size() > 0)){
+  while(((UART1_FR_R&UART_FR_TXFF) == 0) && (Tx_UARTFifo_Size() > 0)){
     Tx_UARTFifo_Get(&letter);
-    UART0_DR_R = letter;
+    UART1_DR_R = letter;
   }
 }
 // input ASCII character from UART
@@ -127,9 +155,9 @@ char UART_InChar(void){
 // spin if TxFifo is full
 void UART_OutChar(char data){
   while(Tx_UARTFifo_Put(data) == FIFOFAIL){};
-  UART0_IM_R &= ~UART_IM_TXIM;          // disable TX FIFO interrupt
+  UART1_IM_R &= ~UART_IM_TXIM;          // disable TX FIFO interrupt
   copySoftwareToHardware();
-  UART0_IM_R |= UART_IM_TXIM;           // enable TX FIFO interrupt
+  UART1_IM_R |= UART_IM_TXIM;           // enable TX FIFO interrupt
 }
 // at least one of three things has happened:
 // hardware TX FIFO goes from 3 to 2 or less items
@@ -151,6 +179,27 @@ void UART0_Handler(void){
   }
   if(UART0_RIS_R&UART_RIS_RTRIS){       // receiver timed out
     UART0_ICR_R = UART_ICR_RTIC;        // acknowledge receiver time out
+    // copy from hardware RX FIFO to software RX FIFO
+    copyHardwareToSoftware();
+  }
+}
+
+void UART1_Handler(void){
+  if(UART1_RIS_R&UART_RIS_TXRIS){       // hardware TX FIFO <= 2 items
+    UART1_ICR_R = UART_ICR_TXIC;        // acknowledge TX FIFO
+    // copy from software TX FIFO to hardware TX FIFO
+    copySoftwareToHardware();
+    if(Tx_UARTFifo_Size() == 0){             // software TX FIFO is empty
+      UART1_IM_R &= ~UART_IM_TXIM;      // disable TX FIFO interrupt
+    }
+  }
+  if(UART1_RIS_R&UART_RIS_RXRIS){       // hardware RX FIFO >= 2 items
+    UART1_ICR_R = UART_ICR_RXIC;        // acknowledge RX FIFO
+    // copy from hardware RX FIFO to software RX FIFO
+    copyHardwareToSoftware();
+  }
+  if(UART1_RIS_R&UART_RIS_RTRIS){       // receiver timed out
+    UART1_ICR_R = UART_ICR_RTIC;        // acknowledge receiver time out
     // copy from hardware RX FIFO to software RX FIFO
     copyHardwareToSoftware();
   }
@@ -319,5 +368,5 @@ char character;
 // Output: none
 void OutCRLF(void){
   UART_OutChar(CR);
-  UART_OutChar(LF);
+  //UART_OutChar(LF);
 }
