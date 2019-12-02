@@ -1464,4 +1464,30 @@ void BSP_LCD_DrawCrosshair(int16_t x, int16_t y, int16_t color) {
 	BSP_LCD_DrawFastHLine(x-2, y+4, 5, color);	
 	
 }
+void BSP_LCD_DrawFlight(int16_t x, int16_t y, int16_t color) {
+	BSP_LCD_DrawFastHLine(x, y-4, 1, color);
+	BSP_LCD_DrawFastHLine(x-1, y-3, 3, color);
+	BSP_LCD_DrawFastHLine(x-1, y-2, 3, color);
+	BSP_LCD_DrawFastHLine(x-2, y-1, 5, color);
+	BSP_LCD_DrawFastHLine(x-3, y, 7, color);
+	BSP_LCD_DrawFastHLine(x-4, y+1, 9, color);
+	BSP_LCD_DrawFastHLine(x, y+2, 1, color);
+	BSP_LCD_DrawFastHLine(x-1, y+3, 3, color);
+	BSP_LCD_DrawFastHLine(x-2, y+4, 5, color);	
+	
+}
+
+void BSP_LCD_DrawEnemy(int16_t x, int16_t y, int16_t color) {
+	// 1024/4=256
+
+	BSP_LCD_DrawFastHLine(x-5, y-2, 11, color);
+	BSP_LCD_DrawFastHLine(x-4, y-1, 9, color);
+	BSP_LCD_DrawPixel(x-4, y, color);
+	BSP_LCD_DrawPixel(x, y, color);
+	BSP_LCD_DrawPixel(x+4, y, color);
+	BSP_LCD_DrawPixel(x, y+1, color);
+	BSP_LCD_DrawFastHLine(x-5, y+1, 3, color);
+	BSP_LCD_DrawFastHLine(x+3, y+1, 3, color);
+	BSP_LCD_DrawFastHLine(x-1, y+2, 3, color);
+}
 
